@@ -1,0 +1,145 @@
+---
+title: "Computational Graphics with R and ggplot2"
+author: "Jeliazko Jeliazkov"
+date: "January 26, 2015"
+output: html_document
+runtime: shiny
+---
+
+This is my attempt of giving an online component to my presentation such that the audience can follow along.
+
+### Plotting a Map of the USA, Filled by Murder Rates
+
+This plot is surprisingly simple to create once you get past the data manipulation.
+
+First, we need to load the prerequisite packages. This can be done with either of the following commands:
+
+```{r Loading Data}
+library(maps)
+require(ggplot2)
+```
+
+When writing functions, the require command is prefered as it fails more gracefully than the library function.
+If neither of these packages are installed on your machine, feel free to use ```install.packages("maps"")``` or ```install.packages("ggplot2")```. Yes. The quotes really do matter. Now, load the packages.
+
+Let's get the tricky data manipulation out of the way. We have a data containing the coordinates of the state borders (coming from the maps package) such that we can plot them and "connect the dots". To create a data frame from the maps data, we use the ggplot2 command ```map_data```. 
+
+```{r Loading Map Data}
+states <- map_data("state")
+head(states)
+```
+
+We also have USA arrests data (I believe this is standard to R). This comes in a data frame, so let's just store it in a renamed variable since we will manipulate it later on.
+
+```{r Loading Arrest Data}
+arrests <- USArrests
+head(USArrests)
+```
+
+Here comes the data manipulation. First, our column names are in two different cases. Let's standardize everything to lowercase.
+```{r Manipulating Arrest Data}
+names(arrests) <- tolower(names(arrests))
+head(arrests)
+```
+
+This part requires a bit of foresight. Notice how the row names of the arrest data are the states. If we could make a separate column for this, we could merge the two datasets by state name (I believe the technical term is inner join).
+```{r More Manipulation}
+arrests$region <- tolower(rownames(USArrests))
+head(arrests)
+```
+
+```{r Merging Data}
+choro <- merge(states,arrests,by="region")
+head(choro)
+```
+
+The merged data frame must be re-ordered to ensure the map is draw properly (ie the points are connected in order). Then, we can plot in one simple line using the command ```qplot```, which I believe stands for quick plot. The full command ```ggplot``` will be examined later on. In the line below, the longitude and latitude are given as the x and y arguments, with the data coming from the object ```choro```, and the rest should be evident.
+
+```{r Plotting Map, fig.width=9, fig.height=5}
+choro <- choro[order(choro$order),]
+qplot(long,lat,data=choro,group=region, fill=murder, geom="polygon") + theme_bw(base_size=20)
+```
+
+### Loading Data, Plotting Points
+
+While the previous example is neat, a scientist may be more interested in plotting his own data. To do so, we must first import data in R. This can be done through any ```read.*``` command. For example, tab delimited data can be imported using ```my_data_frame <- read.table("some_file.txt")``` and a comma separated file can be read using ```my_data_frame <- read.csv("other_file.csv")```. There are other commands, but those two are the ones I use most commonly.
+
+This part may be more difficult to follow along, considering you and I may have differing data. So let's just use a default ggplot2 dataset? Let's work with the mammals sleep dataset (```msleep```).
+
+```{r Mammals Data }
+names(msleep) #let's see what columns are in this data...
+```
+
+I wonder how body weight and sleep time are related? Let's use proper ggplot, not just qplot for this. Here we will call the ```ggplot()``` command. This command takes two arguments: data and an aesthetic mapping (for a scatter plot we map the data to x,y coordinates of a point).
+
+```{r First ggplot}
+p <- ggplot(data=msleep,aes(x=bodywt,y=sleep_total))
+```
+
+Yet, this is not enough to make a plot. In ggplot, we still need a layer (in which we specify a point as our geometric object, mapping x,y from our dataset, but if we had a line geomtry we would need to map other aesthetics such as line width, which could just be a constant).
+
+```{r Adding Layer}
+p <- p + layer(geom = "point") + theme_bw(base_size=20)
+p
+```
+
+The layer function can actually become quite verbose, so most geoms have shortcut functions: ```geom_XXX()```. Furthermore, our plot doesn't reveal much information, perhaps a logarithmic scale on the x-axis would be helpful? This can be done by apply continuous transformation to the x-axis.
+
+```{r ggplot points}
+p <- ggplot(data=msleep,aes(x=bodywt,y=sleep_total)) + geom_point() + scale_x_continuous(trans="log10") + theme_bw(base_size=20)
+p
+```
+
+### Fitting Data
+
+This data looks a lot like there might be a power law involved... Let's try to fit it. We can actually use a linear model to fit since we're rescaling our axis to a logarithmic scale, the data appears to be linear and this is what will be fit. This can be done with the ```stat_smooth``` function in ggplot by specifying the method (linear model) and the data. This function will add the fit and a 95% confidence interval to the plot. This fit isn't very good.
+
+```{r ggplot fitting}
+p <- p + stat_smooth(method="lm",data=msleep,formula= y~x)
+p
+```
+
+While this is very pretty, there is no straightfoward way of extracting the fit coefficients from ggplot. But, fear not for models can be generated in R and coefficients can be extracted from those. In fact, we can use the exact same function as ggplot's stat_smooth method, ```lm()``` which is a least squares regression algorithm.
+
+```{r R fitting}
+fit <- lm(msleep$sleep_total ~ log10(msleep$bodywt))
+summary(fit)
+```
+
+The fit object pretty much stores everything. We can extract the coefficients and use them to add a line to our ggplot so we can compare the ggplot fit to the R fit. Unsurprisingly, they overlap.
+
+```{r R and ggplot fit}
+p + geom_abline(intercept=fit$coefficients[1],slope=fit$coefficients[2])
+```
+
+If you cannot by any means manipulate your data to into a linear form to take advantage of this, there is also a nonlinear least squares fitting function, ```nls()```.
+
+### Plotting Functions
+
+This appears to be a bit of a pain. I haven't had much time or need to look into this. Just use Wolfram Mathematica.
+
+### Plotting Distributions
+
+It is very simple to plot a distribution in ggplot. Let's practice with a dataset. We can check our loaded datasets with the command ```data()```. For now, let's use Edgar Anderson's Iris Data.
+
+```{r iris data}
+head(iris)
+```
+
+To plot a histogram instead of a scatterplot, we simply change the geom. Furthermore, we can divide the data. For example, we can fill the histogram with a different color based on the species of iris.
+
+```{r plot iris}
+ggplot(data=iris,aes(x=Petal.Length,fill=Species)) + geom_histogram() + theme_bw(base_size=20)
+```
+
+It is also possible to plot a "smooth density estimate" or a kernel density estimate (KDE) of the distribution.
+
+```{r kde iris}
+ggplot(data=iris,aes(x=Petal.Length,fill=Species)) + geom_density() + theme_bw(base_size=20)
+```
+
+### Exporting Plots
+
+```{r save,eval=FALSE}
+ggsave("my_plot.png",width=5,height=5)
+```
